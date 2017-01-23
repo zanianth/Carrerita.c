@@ -7,11 +7,12 @@
 #include <time.h>
 #include <pthread.h>
 #include <signal.h>
-			//1 box, 1 corredor, argumentos e hilos
+			//1 box, 1 corredor al tiempo, varios corredores
 #define TRUE 1
 #define FALSE 0
 #define NULO -1
 
+int numCorredoresHastaAhora=0;
 int filaBoxes;
 struct corredores{
 	int identificador;
@@ -28,6 +29,7 @@ FILE *LOG;
 
 void procesamiento_SIGUSR1();
 void escribeEnLog(char * mensaje, int identificador, char entidad); //Habrá que tener en cuenta si quien llama a la función es un corredor, un box o el juez
+int calculaDigitos(int numero);
 void nuevoCorredor();
 void accionesCorredor();
 int accionesBox(int atendidos, int posicion);
@@ -65,6 +67,11 @@ int main(){
 	pthread_attr_t attrBoxes, attrJuez;
 
 	srand(time(NULL)); //semilla plantada
+	//inicializamos valores de la estructura misCorredores
+	misCorredores.identificador = NULO;
+	misCorredores.posicionArray = NULO;
+	misCorredores.sancionado = NULO;
+	misCorredores.tid = NULO;
 	//inicializacion de condiciones
 	pthread_cond_init(&condicionReparado, NULL);
 	pthread_cond_init(&condicionEsperaSancion, NULL); //condicionReparado condicionEsperaSancion condicionSancionCumplida
@@ -92,16 +99,17 @@ void procesamiento_SIGUSR1(){
 
 
 void escribeEnLog(char * mensaje, int numeroIdentificador, char entidad){
-	char intToChar[2];
+	int digitosIdentificador=calculaDigitos(numeroIdentificador);
+	char intToChar[digitosIdentificador];
 	char * cadenaIdentificador;
 
 	if(entidad=='c'){
-		cadenaIdentificador = (char *)malloc(11*sizeof(char));
+		cadenaIdentificador = (char *)malloc((digitosIdentificador+10)*sizeof(char));
 		strcat(cadenaIdentificador, "Corredor_");
 		sprintf(intToChar, "%d", numeroIdentificador);
 		strcat(cadenaIdentificador, intToChar); 
 	}else if(entidad=='b'){
-		cadenaIdentificador = (char *)malloc(6*sizeof(char));
+		cadenaIdentificador = (char *)malloc((digitosIdentificador+5)*sizeof(char));
 		strcat(cadenaIdentificador, "Box_");
 		sprintf(intToChar, "%d", numeroIdentificador);
 		strcat(cadenaIdentificador, intToChar); 
@@ -115,20 +123,29 @@ void escribeEnLog(char * mensaje, int numeroIdentificador, char entidad){
 	char stnow [19];
 	strftime(stnow, 19, "%y/%m/%d %H:%M:%S", tlocal);
 
-	
-
-	LOG = fopen("Carrerita1.2.log", "a");
+	LOG = fopen("LogCarrerita1.3.log", "a");
 	fprintf(LOG , "[20%s] %s: %s\n", stnow, cadenaIdentificador, mensaje);
 	fclose(LOG);
 	free(cadenaIdentificador);
 }
 
 
-void nuevoCorredor(){
-	misCorredores.identificador = 1;
+int calculaDigitos(int numero){
+	int i;
 
-	pthread_create(&(misCorredores.tid), NULL, hiloCorredores, (void *)&(misCorredores.identificador));
-	printf("Corredor añadido\n");
+	for(numero=1; numero>10; i++){
+		numero = numero/10;
+	}
+	return i;
+}
+
+
+void nuevoCorredor(){
+	if(misCorredores.identificador==NULO){
+		misCorredores.identificador = ++numCorredoresHastaAhora;
+		pthread_create(&(misCorredores.tid), NULL, hiloCorredores, NULL);
+		printf("Corredor añadido\n");
+	}
 }
 
 
@@ -144,7 +161,7 @@ void accionesCorredor(){
 		strcat(mensaje, "dio la vuelta ");
 		sprintf(vuelta, "%d", i+1); 
 		strcat(mensaje, vuelta);
-		escribeEnLog(mensaje, 1, 'c');
+		escribeEnLog(mensaje, misCorredores.identificador, 'c');
 		strcpy(mensaje, "");
 		printf("di la puta vuelta %d\n", i+1);
 
@@ -156,7 +173,7 @@ void accionesCorredor(){
 		}
 
 		if (misCorredores.sancionado == TRUE) {
-				printf("otia tio, la GC\n");
+			printf("otia tio, la GC\n");
 /*ep*/			pthread_cond_signal(&condicionEsperaSancion);//señal de la verga
 /*ep*/			pthread_cond_wait(&condicionSancionCumplida, &mutex);//espera la puta
 			printf("otia tio, meh dajao tos los napos\n");
@@ -164,18 +181,18 @@ void accionesCorredor(){
 	}
 	escribeEnLog("ha terminado la puta carrera", misCorredores.identificador, 'c');
 	printf("he terminado la puta carrera\n");
-	misCorredores.identificador=0;
+	misCorredores.identificador=NULO;
 	misCorredores.posicionArray=NULO;
-	misCorredores.sancionado=FALSE;
-	misCorredores.tid=0;
+	misCorredores.sancionado=NULO;
+	misCorredores.tid=NULO;
 }
 
-int accionesBox(int atendidos, int posicion){ //A veces da error "*** stack smashing detected ***: ./carrerita1.2 terminated\nAborted", tanto cuando repara como cuando expulsa
-	int tiempoAtencion, hayProblemas;
+int accionesBox(int atendidos, int posicion){ //A veces da error "*** stack smashing detected ***: ./carrerita1.3 terminated\nAborted", tanto cuando repara como cuando expulsa
+	int tiempoAtencion, hayProblemas, digitosIdentificador=calculaDigitos(misCorredores.identificador);
 	char mensaje[48];
 	char * cadenaIdentificador;
 
-	if(filaBoxes==0){
+	if(filaBoxes==NULO){
 		sleep(1);
 	}else{
 		atendidos++;
@@ -183,11 +200,11 @@ int accionesBox(int atendidos, int posicion){ //A veces da error "*** stack smas
 		sleep(tiempoAtencion);
 		hayProblemas = rand() % 10;
 		if (hayProblemas < 3) {
-			filaBoxes=0;
+			filaBoxes=NULO;
 			printf("A LA PUTA CALLE MALPARIO\n");
 
 			strcat(mensaje, "se expulso a corredor_");
-			cadenaIdentificador = (char *)malloc(2*sizeof(char));
+			cadenaIdentificador = (char *)malloc((digitosIdentificador+1)*sizeof(char));
 			sprintf(cadenaIdentificador, "%d", misCorredores.identificador);
 			strcat(mensaje, cadenaIdentificador);
 			strcat(mensaje, " por problemas mecanicos");
@@ -203,10 +220,10 @@ int accionesBox(int atendidos, int posicion){ //A veces da error "*** stack smas
 			free(cadenaIdentificador);
 			pthread_cancel(misCorredores.tid);
 		}else{
-			filaBoxes=0;
+			filaBoxes=NULO;
 			printf("QUE NO VUELVA A PASAR\n");
 			strcat(mensaje, "se atendio a corredor_");
-			cadenaIdentificador = (char *)malloc(2*sizeof(char));
+			cadenaIdentificador = (char *)malloc((digitosIdentificador+1)*sizeof(char));
 			sprintf(cadenaIdentificador, "%d", misCorredores.identificador);
 			strcat(mensaje, cadenaIdentificador);
 			strcat(mensaje, " con exito");
